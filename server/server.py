@@ -54,6 +54,31 @@ def dropall():
             DROP TABLE IF EXISTS current_session;
         '''
     ))
+    mysql.session.execute(text(
+        '''
+            DROP TRIGGER IF EXISTS after_admin_insert;
+        '''
+    ))
+    mysql.session.execute(text(
+        '''
+            DROP TRIGGER IF EXISTS after_proff_insert;
+        '''
+    ))
+    mysql.session.execute(text(
+        '''
+            DROP TRIGGER IF EXISTS after_student_insert;
+        '''
+    ))
+    mysql.session.execute(text(
+        '''
+            DROP TRIGGER IF EXISTS after_current_update;
+        '''
+    ))
+    mysql.session.execute(text(
+        '''
+            DROP PROCEDURE IF EXISTS after_current_update;
+        '''
+    ))
     mysql.session.commit()
 
 def create_tables():
@@ -88,6 +113,7 @@ def create_tables():
             CREATE TABLE IF NOT EXISTS proff(
                 p_id INTEGER PRIMARY KEY AUTO_INCREMENT,
                 p_name VARCHAR(255) NOT NULL,
+                p_email VARCHAR(255) NOT NULL,
                 p_password VARCHAR(255) NOT NULL,
                 d_id INTEGER NOT NULL,
                 FOREIGN KEY (d_id) REFERENCES dept(d_id)
@@ -181,10 +207,23 @@ def add_triggers():
         '''
     ))
 
+def add_procedures():
+    mysql.session.execute(text(
+        '''
+            CREATE PROCEDURE after_current_update(IN user_id INTEGER, IN user_level INTEGER, IN user_ip VARCHAR(255))
+            BEGIN
+                UPDATE current_session 
+                SET active=FALSE 
+                WHERE ip = user_ip AND (id != user_id OR level != user_level);
+            END;
+        '''
+    ))
+
 with app.app_context():
     dropall()
     create_tables()
     add_triggers()    
+    add_procedures()
     mysql.session.execute(text(
         '''
             INSERT INTO admin(username, password) VALUES('admin', 'admin');
@@ -218,7 +257,24 @@ def adminLogin():
     ip = request.json['ip']
     result = mysql.session.execute(text("SELECT * FROM admin WHERE username=:username AND password=:password"), {'username': username, 'password': password})
     if result.rowcount == 1:
-        mysql.session.execute(text("UPDATE current_session SET lastlogin=NOW(), ip=:ip, active=TRUE WHERE id=:id and level=3"), {'id': result.fetchone()[0], 'ip': ip})
+        user_id = result.fetchone()[0]
+        mysql.session.execute(text("UPDATE current_session SET lastlogin=NOW(), ip=:ip, active=TRUE WHERE id=:id and level=3"), {'id': user_id, 'ip': ip})
+        mysql.session.execute(text("CALL after_current_update(:id, :level, :ip)"), {'id': user_id, 'level': 3, 'ip': ip})
+        mysql.session.commit()
+        return jsonify({'status': 'success'})
+    else:
+        return jsonify({'status': 'failed'})
+    
+@app.route('/api/LoginProff', methods=['POST'])
+def proffLogin():
+    username = request.json['username']
+    password = request.json['password']
+    ip = request.json['ip']
+    result = mysql.session.execute(text("SELECT * FROM proff WHERE p_email=:username AND p_password=:password"), {'username': username, 'password': password})
+    if result.rowcount == 1:
+        user_id = result.fetchone()[0]
+        mysql.session.execute(text("UPDATE current_session SET lastlogin=NOW(), ip=:ip, active=TRUE WHERE id=:id and level=2"), {'id': user_id, 'ip': ip})
+        mysql.session.execute(text("CALL after_current_update(:id, :level, :ip)"), {'id': user_id, 'level': 2, 'ip': ip})
         mysql.session.commit()
         return jsonify({'status': 'success'})
     else:
@@ -229,6 +285,7 @@ def proffAdd():
     name = request.json['name']
     password = request.json['password']
     dept = request.json['dept']
+    email = request.json['email']
     ip = request.json['ip']
 
     # Check if the current user has level == 3
@@ -236,7 +293,7 @@ def proffAdd():
 
     if user_check.rowcount == 1:
         # The user has level == 3, proceed with the proff insert
-        result = mysql.session.execute(text("INSERT INTO proff(p_name, p_password, d_id) VALUES(:name, :password, :dept)"), {'name': name, 'password': password, 'dept': dept})
+        result = mysql.session.execute(text("INSERT INTO proff(p_name, p_email, p_password, d_id) VALUES(:name, :email, :password, :dept)"), {'name': name,'email': email , 'password': password, 'dept': dept})
         
         if result.rowcount == 1:
             mysql.session.commit()
