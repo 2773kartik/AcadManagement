@@ -49,11 +49,14 @@ def dropall():
             DROP TABLE IF EXISTS admin;
         '''
     ))
+    mysql.session.execute(text(
+        '''
+            DROP TABLE IF EXISTS current_session;
+        '''
+    ))
     mysql.session.commit()
 
-with app.app_context():
-    dropall()
-
+def create_tables():
     mysql.session.execute(text(
         '''
             CREATE TABLE IF NOT EXISTS admin(
@@ -132,7 +135,74 @@ with app.app_context():
     ))
     mysql.session.execute(text(
         '''
+            CREATE TABLE IF NOT EXISTS current_session(
+                id INTEGER,
+                lastlogin DATETIME,
+                level INTEGER NOT NULL,
+                ip VARCHAR(255),
+                active BOOLEAN NOT NULL DEFAULT FALSE,
+                PRIMARY KEY (id, level)
+            )
+        '''
+    ))
+
+def add_triggers():
+    mysql.session.execute(text(
+        '''
+            CREATE TRIGGER after_admin_insert
+            AFTER INSERT ON admin
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO current_session (id, lastlogin, level, ip, active)
+                VALUES (NEW.id, NULL, 3, ip, active);
+            END;
+        '''
+    ))
+    mysql.session.execute(text(
+        '''
+            CREATE TRIGGER after_proff_insert
+            AFTER INSERT ON proff
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO current_session (id, lastlogin, level, ip, active)
+                VALUES (NEW.p_id, NULL, 2, ip, active);
+            END;
+        '''
+    ))
+    mysql.session.execute(text(
+        '''
+            CREATE TRIGGER after_student_insert
+            AFTER INSERT ON student
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO current_session (id, lastlogin, level, ip, active)
+                VALUES (NEW.s_id, NULL, 1, ip, active);
+            END;
+        '''
+    ))
+
+with app.app_context():
+    dropall()
+    create_tables()
+    add_triggers()    
+    mysql.session.execute(text(
+        '''
             INSERT INTO admin(username, password) VALUES('admin', 'admin');
+        '''
+    ))
+    mysql.session.execute(text(
+        '''
+            INSERT INTO dept(d_name) VALUES('CSE');
+        '''
+    ))
+    mysql.session.execute(text(
+        '''
+            INSERT INTO dept(d_name) VALUES('MNC');
+        '''
+    ))
+    mysql.session.execute(text(
+        '''
+            INSERT INTO dept(d_name) VALUES('ELE');
         '''
     ))
     mysql.session.commit()
@@ -145,11 +215,37 @@ def index():
 def adminLogin():
     username = request.json['username']
     password = request.json['password']
+    ip = request.json['ip']
     result = mysql.session.execute(text("SELECT * FROM admin WHERE username=:username AND password=:password"), {'username': username, 'password': password})
     if result.rowcount == 1:
+        mysql.session.execute(text("UPDATE current_session SET lastlogin=NOW(), ip=:ip, active=TRUE WHERE id=:id and level=3"), {'id': result.fetchone()[0], 'ip': ip})
+        mysql.session.commit()
         return jsonify({'status': 'success'})
     else:
         return jsonify({'status': 'failed'})
+
+@app.route('/api/AddProff', methods=['POST'])
+def proffAdd():
+    name = request.json['name']
+    password = request.json['password']
+    dept = request.json['dept']
+    ip = request.json['ip']
+
+    # Check if the current user has level == 3
+    user_check = mysql.session.execute(text("SELECT id FROM current_session WHERE ip=:ip AND active=TRUE AND level=3"), {'ip': ip})
+
+    if user_check.rowcount == 1:
+        # The user has level == 3, proceed with the proff insert
+        result = mysql.session.execute(text("INSERT INTO proff(p_name, p_password, d_id) VALUES(:name, :password, :dept)"), {'name': name, 'password': password, 'dept': dept})
+        
+        if result.rowcount == 1:
+            mysql.session.commit()
+            return jsonify({'status': 'success'})
+        else:
+            return jsonify({'status': 'failed'})
+    else:
+        return jsonify({'status': 'permission denied'})
+
     
 if __name__ == '__main__':
     app.run(debug=True)
