@@ -139,8 +139,10 @@ def create_tables():
                 s_id INTEGER PRIMARY KEY AUTO_INCREMENT,
                 s_name VARCHAR(255) NOT NULL,
                 s_email VARCHAR(255) NOT NULL,
+                s_roll VARCHAR(255) NOT NULL,
                 s_password VARCHAR(255) NOT NULL,
                 s_degree VARCHAR(255) NOT NULL,
+                s_year INTEGER NOT NULL,
                 s_dept INTEGER NOT NULL,
                 FOREIGN KEY (s_dept) REFERENCES dept(d_id)
             );
@@ -152,7 +154,9 @@ def create_tables():
                 course_id INTEGER NOT NULL,
                 course_session INTEGER NOT NULL,
                 stu_id INTEGER NOT NULL,
+                status INTEGER NOT NULL,
                 grade INTEGER NOT NULL,
+                PRIMARY KEY (course_id, course_session, stu_id),
                 FOREIGN KEY (course_id) REFERENCES course(c_id),
                 FOREIGN KEY (course_session) REFERENCES session(s_id),
                 FOREIGN KEY (stu_id) REFERENCES student(s_id)
@@ -175,7 +179,7 @@ def create_tables():
 def add_triggers():
     mysql.session.execute(text(
         '''
-            CREATE TRIGGER after_admin_insert
+            CREATE TRIGGER IF NOT EXISTS after_admin_insert
             AFTER INSERT ON admin
             FOR EACH ROW
             BEGIN
@@ -186,7 +190,7 @@ def add_triggers():
     ))
     mysql.session.execute(text(
         '''
-            CREATE TRIGGER after_proff_insert
+            CREATE TRIGGER IF NOT EXISTS after_proff_insert
             AFTER INSERT ON proff
             FOR EACH ROW
             BEGIN
@@ -197,7 +201,7 @@ def add_triggers():
     ))
     mysql.session.execute(text(
         '''
-            CREATE TRIGGER after_student_insert
+            CREATE TRIGGER IF NOT EXISTS after_student_insert
             AFTER INSERT ON student
             FOR EACH ROW
             BEGIN
@@ -210,7 +214,7 @@ def add_triggers():
 def add_procedures():
     mysql.session.execute(text(
         '''
-            CREATE PROCEDURE after_current_update(IN user_id INTEGER, IN user_level INTEGER, IN user_ip VARCHAR(255))
+            CREATE PROCEDURE IF NOT EXISTS after_current_update(IN user_id INTEGER, IN user_level INTEGER, IN user_ip VARCHAR(255))
             BEGIN
                 UPDATE current_session 
                 SET active=FALSE 
@@ -249,6 +253,52 @@ with app.app_context():
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/api/AddSession', methods=['POST'])
+def sessionAdd():
+    #check if current user has level 3
+    ip = request.json['ip']
+    name = request.json['name']
+    user_check = mysql.session.execute(text("SELECT id FROM current_session WHERE ip=:ip AND active=TRUE AND level=3"), {'ip': ip})
+    if user_check.rowcount == 1:
+        # The user has level == 3, proceed with the session insert
+        result = mysql.session.execute(text("INSERT INTO session(s_name, active) VALUES(:name, FALSE)"), {'name': name})
+        if result.rowcount == 1:
+            mysql.session.commit()
+            return jsonify({'status': 'success'})
+        else:
+            return jsonify({'status': 'failed'})
+    else:
+        return jsonify({'status': 'permission denied'})
+    
+@app.route('/api/SetSession', methods=['POST'])
+def sessionSet():
+    # Check if the current user has level 3
+    ip = request.json['ip']
+    name = request.json['name']
+    
+    result = mysql.session.execute(text(
+        '''
+        UPDATE session
+        SET active = CASE 
+            WHEN (SELECT level FROM current_session WHERE ip=:ip AND active=TRUE) = 3 THEN 
+                CASE 
+                    WHEN s_name = :name THEN TRUE
+                    ELSE FALSE
+                END
+            ELSE FALSE
+        END
+        WHERE TRUE
+        '''
+    ), {'ip': ip, 'name': name})
+    mysql.session.commit()
+
+    if result.rowcount > 0:
+        mysql.session.commit()
+        return jsonify({'status': 'success'})
+    else:
+        return jsonify({'status': 'permission denied'})
+
 
 @app.route('/api/LoginAdmin', methods=['POST'])
 def adminLogin():
@@ -302,7 +352,84 @@ def proffAdd():
             return jsonify({'status': 'failed'})
     else:
         return jsonify({'status': 'permission denied'})
+    
+@app.route('/api/AddCourse', methods=['POST'])
+def courseAdd():
+    name = request.json['name']
+    cred = request.json['cred']
+    ip = request.json['ip']
 
+    # Check if the current user has level == 2 and an active session is set
+    result = mysql.session.execute(
+        text('''
+             SELECT id, (SELECT s_id FROM session WHERE active=TRUE) as active_session 
+             FROM current_session 
+             WHERE ip=:ip AND active=TRUE AND level=2
+             '''
+             ),
+        {'ip': ip}
+    )
+
+    if result.rowcount == 1:
+        user_id, active_session = result.fetchone()
+        print(user_id)
+        print(active_session)
+
+        # Proceed with the course insert
+        result = mysql.session.execute(
+            text("INSERT INTO course(c_name, c_cred, c_session, p_id) VALUES(:name, :cred, :session, :proff)"),
+            {'name': name, 'cred': cred, 'session': active_session, 'proff': user_id}
+        )
+
+        if result.rowcount == 1:
+            mysql.session.commit()
+            return jsonify({'status': 'success'})
+        else:
+            return jsonify({'status': 'failed'})
+    else:
+        return jsonify({'status': 'permission denied / no active session'})
+
+    
+@app.route('/api/LoginStudent', methods=['POST'])
+def studentLogin():
+    username = request.json['username']
+    password = request.json['password']
+    ip = request.json['ip']
+    result = mysql.session.execute(text("SELECT * FROM student WHERE s_email=:username AND s_password=:password"), {'username': username, 'password': password})
+    if result.rowcount == 1:
+        user_id = result.fetchone()[0]
+        mysql.session.execute(text("UPDATE current_session SET lastlogin=NOW(), ip=:ip, active=TRUE WHERE id=:id and level=1"), {'id': user_id, 'ip': ip})
+        mysql.session.execute(text("CALL after_current_update(:id, :level, :ip)"), {'id': user_id, 'level': 1, 'ip': ip})
+        mysql.session.commit()
+        return jsonify({'status': 'success'})
+    else:
+        return jsonify({'status': 'failed'})
+
+@app.route('/api/AddStudent', methods=['POST'])
+def studentAdd():
+    name = request.json['name']
+    password = request.json['password']
+    year = request.json['year']
+    roll = request.json['roll']
+    dept = request.json['dept']
+    email = request.json['email']
+    degree = request.json['degree']
+    ip = request.json['ip']
+
+    # Check if the current user has level == 3
+    user_check = mysql.session.execute(text("SELECT id FROM current_session WHERE ip=:ip AND active=TRUE AND level=3"), {'ip': ip})
+
+    if user_check.rowcount == 1:
+        # The user has level == 3, proceed with the proff insert
+        result = mysql.session.execute(text("INSERT INTO student(s_name, s_email, s_roll, s_password, s_degree, s_year, s_dept) VALUES(:name, :email, :roll, :password, :degree, :year, :dept)"), {'name': name,'email': email , 'roll': roll, 'password': password, 'degree': degree, 'year': year, 'dept': dept})
+        
+        if result.rowcount == 1:
+            mysql.session.commit()
+            return jsonify({'status': 'success'})
+        else:
+            return jsonify({'status': 'failed'})
+    else:
+        return jsonify({'status': 'permission denied'})
     
 if __name__ == '__main__':
     app.run(debug=True)
