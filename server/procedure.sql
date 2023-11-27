@@ -168,6 +168,8 @@ CREATE PROCEDURE IF NOT EXISTS student_add_course(
         DECLARE old_year INT;
         DECLARE old_degree VARCHAR(255);
         DECLARE old_dept INT;
+        DECLARE old_course INT;
+        DECLARE old_session INT;
 
         -- Get user details
         SELECT id, level INTO user_id, user_level
@@ -189,15 +191,18 @@ CREATE PROCEDURE IF NOT EXISTS student_add_course(
                 WHERE active = TRUE;
 
                 -- Check if a student with the same year, degree, and department has already been added
-                SELECT s_year, s_degree, s_dept INTO old_year, old_degree, old_dept
+                SELECT s_year, s_degree, s_dept, course_id, course_session INTO old_year, old_degree, old_dept, old_course, old_session
                 FROM stu_course, student
                 WHERE stu_course.stu_id = student.s_id
                     AND stu_course.course_session = session_id
                     AND student.s_year = input_year
                     AND student.s_degree = input_degree
-                    AND student.s_dept = input_dept;
+                    AND student.s_dept = input_dept
+                    AND course_id = input_course_id 
+                    AND course_session = session_id
+                LIMIT 1;
 
-                IF old_year IS NOT NULL AND old_degree IS NOT NULL AND old_dept IS NOT NULL THEN
+                IF old_year IS NOT NULL AND old_degree IS NOT NULL AND old_dept IS NOT NULL AND old_course IS NOT NULL AND old_session IS NOT NULL THEN
                     SELECT 'already added' AS status;
                 ELSE
                     -- Insert into stu_course
@@ -300,6 +305,134 @@ CREATE PROCEDURE IF NOT EXISTS add_grade(
                             WHERE course_id = input_course_id AND course_session = active_session AND stu_id = stud_id;
 
                             SELECT 'success' AS status;
+                        ELSE
+                            SELECT 'permission denied' AS status;
+                        END IF;
+                    ELSE
+                        SELECT 'permission denied' AS status;
+                    END IF;
+                ELSE
+                    SELECT 'permission denied' AS status;
+                END IF;
+            END;
+
+/
+
+CREATE PROCEDURE IF NOT EXISTS get_proffs(
+                IN input_ip VARCHAR(255)
+            )
+            BEGIN
+                DECLARE user_id INT;
+                DECLARE active_session INT;
+
+                -- Get user details
+                SELECT id, (SELECT s_id FROM session WHERE active = TRUE) INTO user_id, active_session
+                FROM current_session
+                WHERE ip = input_ip AND active = TRUE AND level = 2;
+
+                -- Check if the user has level 2 and an active session is set
+                IF user_id IS NOT NULL AND active_session IS NOT NULL THEN
+                    -- Get the list of proffs
+                    SELECT p_id, p_name, p_email, d_name
+                    FROM proff, dept
+                    WHERE proff.d_id = dept.d_id;
+                ELSE
+                    SELECT 'permission denied' AS status;
+                END IF;
+            END;
+/
+
+CREATE PROCEDURE IF NOT EXISTS get_students(
+                IN input_ip VARCHAR(255)
+            )
+            BEGIN
+                DECLARE user_id INT;
+                DECLARE active_session INT;
+
+                -- Get user details
+                SELECT id, (SELECT s_id FROM session WHERE active = TRUE) INTO user_id, active_session
+                FROM current_session
+                WHERE ip = input_ip AND active = TRUE AND level >= 2;
+
+                -- Check if the user has level 2 and an active session is set
+                IF user_id IS NOT NULL AND active_session IS NOT NULL THEN
+                    -- Get the list of students
+                    SELECT s_id, s_name, s_email, s_roll, s_degree, s_year, d_name, credits, cgpa
+                    FROM student, dept
+                    WHERE student.s_dept = dept.d_id;
+                ELSE
+                    SELECT 'permission denied' AS status;
+                END IF;
+            END;
+
+/
+CREATE PROCEDURE IF NOT EXISTS get_cur_courses(
+                IN input_ip VARCHAR(255)
+            )
+            BEGIN
+                DECLARE user_id INT;
+                DECLARE active_session INT;
+
+                -- Get user details
+                SELECT id, (SELECT s_id FROM session WHERE active = TRUE) INTO user_id, active_session
+                FROM current_session
+                WHERE ip = input_ip AND active = TRUE AND level >= 1;
+
+                -- Check if the user has level 2 and an active session is set
+                IF user_id IS NOT NULL AND active_session IS NOT NULL THEN
+                    -- Get the list of courses
+                    SELECT c_id, c_name, c_cred, p_name, d_name
+                    FROM course, proff, dept
+                    WHERE course.p_id = proff.p_id AND proff.d_id = dept.d_id AND c_session = active_session;
+                ELSE
+                    SELECT 'permission denied' AS status;
+                END IF;
+            END;
+
+/
+
+CREATE PROCEDURE IF NOT EXISTS enroll_course(
+                IN input_ip VARCHAR(255),
+                IN input_course_id INT
+            )
+            -- student enrolls in current active course
+            BEGIN
+                DECLARE user_id INT;
+                DECLARE active_session INT;
+                DECLARE old_course INT;
+                DECLARE old_session INT;
+
+                -- Get user details
+                SELECT id, (SELECT s_id FROM session WHERE active = TRUE) INTO user_id, active_session
+                FROM current_session
+                WHERE ip = input_ip AND active = TRUE AND level = 1;
+
+                -- Check if the user has level 1 and an active session is set
+                IF user_id IS NOT NULL AND active_session IS NOT NULL THEN
+                    -- Check if the course_id exists
+                    SELECT c_id INTO old_course
+                    FROM course
+                    WHERE c_id = input_course_id;
+
+                    -- Check if old_course is not null
+                    IF old_course IS NOT NULL THEN
+                        -- Get the active session ID
+                        SELECT s_id INTO old_session
+                        FROM session
+                        WHERE active = TRUE;
+
+                        -- Check if the course is active in the current session
+                        IF old_session IS NOT NULL AND old_session = active_session THEN
+                            -- Check if the student is already enrolled in the course
+                            IF NOT EXISTS (SELECT 1 FROM stu_course WHERE course_id = input_course_id AND course_session = active_session AND stu_id = user_id) THEN
+                                -- Insert into stu_course
+                                INSERT INTO stu_course(course_id, course_session, stu_id, status, grade)
+                                VALUES (input_course_id, active_session, user_id, 1, 0);
+
+                                SELECT 'success' AS status;
+                            ELSE
+                                SELECT 'already enrolled' AS status;
+                            END IF;
                         ELSE
                             SELECT 'permission denied' AS status;
                         END IF;

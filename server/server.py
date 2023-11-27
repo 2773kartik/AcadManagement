@@ -50,7 +50,7 @@ def add_procedures():
             for query in queries:
                 mysql.session.execute(text(query))
             mysql.session.commit()
-        with open('cgpa.sql', 'r') as f:
+        with open('cgp.sql', 'r') as f:
             query = f.read()
             mysql.session.execute(text(query))
             mysql.session.commit()
@@ -228,15 +228,43 @@ def getCourses():
     else:
         return jsonify([])
 
-@app.route('/api/GetStudents', methods=['GET'])
-def getStudents():
+@app.route('/api/GetCurCourses', methods=['GET'])
+def getCurCourses():
+    ip = request.json['ip']
     result = mysql.session.execute(text(
         '''
-            SELECT s_id, s_name, s_year, s_roll, s_dept, s_email, s_degree, d_name
-            FROM student
-            INNER JOIN dept ON student.s_dept = dept.d_id
+            CALL get_cur_courses(:ip)
         '''
-    ))
+    ), {'ip': ip})
+    mysql.session.commit()
+    if result.rowcount > 0:
+        results = result.fetchall()
+        results = [tuple(row) for row in results]
+        return jsonify(results)
+    else:
+        return jsonify([])
+
+@app.route('/api/EnrollCourse', methods=['POST'])
+def enrollCourse():
+    ip = request.json['ip']
+    course_id = request.json['course_id']
+    result = mysql.session.execute(text(
+        '''
+            CALL enroll_course(:ip, :course_id)
+        '''
+    ), {'ip': ip, 'course_id': course_id})
+    mysql.session.commit()
+    status = result.fetchone()[0]
+    return jsonify({'status': status})
+
+@app.route('/api/GetStudents', methods=['GET'])
+def getStudents():
+    ip = request.json['ip']
+    result = mysql.session.execute(text(
+        '''
+            CALL get_students(:ip)
+        '''
+    ), {'ip': ip})
     mysql.session.commit()
     if result.rowcount > 0:
         results = result.fetchall()

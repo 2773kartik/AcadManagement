@@ -26,4 +26,7 @@ DROP PROCEDURE IF EXISTS student_login;
 DROP PROCEDURE IF EXISTS proff_add;
 DROP PROCEDURE IF EXISTS proff_login;
 DROP PROCEDURE IF EXISTS get_proffs;
-DROP PROCEDURE IF EXISTS calculate_sgpa_and_update_student;
+DROP PROCEDURE IF EXISTS calculate_sgpa;
+DROP PROCEDURE IF EXISTS update_cgpa;
+DROP PROCEDURE IF EXISTS get_students;
+DROP PROCEDURE IF EXISTS get_cur_courses;

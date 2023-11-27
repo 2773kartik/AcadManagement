@@ -35,7 +35,8 @@ CREATE TRIGGER IF NOT EXISTS before_session_change
             SET status = 4
             WHERE course_session = OLD.s_id;
 
-            CALL calculate_sgpa_and_update_student(OLD.s_id);
+            CALL calculate_sgpa(OLD.s_id);
+            CALL update_cgpa();
         END IF;
     END;
 
