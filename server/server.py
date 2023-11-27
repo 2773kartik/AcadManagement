@@ -76,17 +76,16 @@ def sessionAdd():
     #check if current user has level 3
     ip = request.json['ip']
     name = request.json['name']
-    user_check = mysql.session.execute(text("SELECT id FROM current_session WHERE ip=:ip AND active=TRUE AND level=3"), {'ip': ip})
-    if user_check.rowcount == 1:
-        # The user has level == 3, proceed with the session insert
-        result = mysql.session.execute(text("INSERT INTO session(s_name, active) VALUES(:name, FALSE)"), {'name': name})
-        if result.rowcount == 1:
-            mysql.session.commit()
-            return jsonify({'status': 'success'})
-        else:
-            return jsonify({'status': 'failed'})
-    else:
-        return jsonify({'status': 'permission denied'})
+    sql_query = "CALL session_add(:ip, :name)"
+    params = {
+        'ip': ip,
+        'name': name
+    }
+
+    result = mysql.session.execute(text(sql_query), params)
+    mysql.session.commit()
+    status = result.fetchone()[0]
+    return jsonify({'status': status})
     
 @app.route('/api/SetSession', methods=['POST'])
 def sessionSet():
@@ -137,15 +136,17 @@ def proffLogin():
     username = request.json['username']
     password = request.json['password']
     ip = request.json['ip']
-    result = mysql.session.execute(text("SELECT * FROM proff WHERE p_email=:username AND p_password=:password"), {'username': username, 'password': password})
-    if result.rowcount == 1:
-        user_id = result.fetchone()[0]
-        mysql.session.execute(text("UPDATE current_session SET lastlogin=NOW(), ip=:ip, active=TRUE WHERE id=:id and level=2"), {'id': user_id, 'ip': ip})
-        mysql.session.execute(text("CALL after_current_update(:id, :level, :ip)"), {'id': user_id, 'level': 2, 'ip': ip})
-        mysql.session.commit()
-        return jsonify({'status': 'success'})
-    else:
-        return jsonify({'status': 'failed'})
+    sql_query = "CALL proff_login(:username, :password, :ip)"
+    params = {
+        'username': username,
+        'password': password,
+        'ip': ip
+    }
+
+    result = mysql.session.execute(text(sql_query), params)
+    mysql.session.commit()
+    status = result.fetchone()[0]
+    return jsonify({'status': status})
 
 @app.route('/api/AddProff', methods=['POST'])
 def proffAdd():
@@ -155,25 +156,19 @@ def proffAdd():
     email = request.json['email']
     ip = request.json['ip']
 
-    # Check if the current user has level == 3
-    user_check = mysql.session.execute(text("SELECT id FROM current_session WHERE ip=:ip AND active=TRUE AND level=3"), {'ip': ip})
+    sql_query = "CALL proff_add(:name, :password, :dept, :email, :ip)"
+    params = {
+        'name': name,
+        'password': password,
+        'dept': dept,
+        'email': email,
+        'ip': ip
+    }
 
-    if user_check.rowcount == 1:
-        # The user has level == 3, proceed with the proff insert
-        result = mysql.session.execute(text(
-            '''SELECT p_name FROM proff'''
-        ))
-        if result.rowcount > 0:
-            return jsonify({'status': 'Already exists!'})
-        result = mysql.session.execute(text("INSERT INTO proff(p_name, p_email, p_password, d_id) VALUES(:name, :email, :password, :dept)"), {'name': name,'email': email , 'password': password, 'dept': dept})
-        
-        if result.rowcount == 1:
-            mysql.session.commit()
-            return jsonify({'status': 'success'})
-        else:
-            return jsonify({'status': 'failed'})
-    else:
-        return jsonify({'status': 'permission denied'})
+    result = mysql.session.execute(text(sql_query), params)
+    mysql.session.commit()
+    status = result.fetchone()[0]
+    return jsonify({'status': status})
     
 @app.route('/api/AddCourse', methods=['POST'])
 def courseAdd():
@@ -211,20 +206,21 @@ def student_add_course():
 
     return jsonify({'status': status})
 
-@app.route('/api/GetCourses', methods=['POST'])
+@app.route('/api/GetCourses', methods=['GET'])
 def getCourses():
-    ip = request.json['ip']
     result = mysql.session.execute(text(
         '''
-            SELECT c_id, c_name, c_cred, p_name, s_name, c_session
+            SELECT c_id, c_name, c_cred, p_name, s_name
             FROM course
             INNER JOIN proff ON course.p_id = proff.p_id
             INNER JOIN session ON course.c_session = session.s_id
         '''
-    ), {'ip': ip})
+    ))
     mysql.session.commit()
     if result.rowcount > 0:
-        return jsonify(result.fetchall())
+        results = result.fetchall()
+        results = [tuple(row) for row in results]
+        return jsonify(results)
     else:
         return jsonify([])
     
@@ -233,15 +229,17 @@ def studentLogin():
     username = request.json['username']
     password = request.json['password']
     ip = request.json['ip']
-    result = mysql.session.execute(text("SELECT * FROM student WHERE s_email=:username AND s_password=:password"), {'username': username, 'password': password})
-    if result.rowcount == 1:
-        user_id = result.fetchone()[0]
-        mysql.session.execute(text("UPDATE current_session SET lastlogin=NOW(), ip=:ip, active=TRUE WHERE id=:id and level=1"), {'id': user_id, 'ip': ip})
-        mysql.session.execute(text("CALL after_current_update(:id, :level, :ip)"), {'id': user_id, 'level': 1, 'ip': ip})
-        mysql.session.commit()
-        return jsonify({'status': 'success'})
-    else:
-        return jsonify({'status': 'failed'})
+    sql_query = "CALL student_login(:username, :password, :ip)"
+    params = {
+        'username': username,
+        'password': password,
+        'ip': ip
+    }
+
+    result = mysql.session.execute(text(sql_query), params)
+    mysql.session.commit()
+    status = result.fetchone()[0]
+    return jsonify({'status': status})
 
 @app.route('/api/AddStudent', methods=['POST'])
 def studentAdd():
@@ -254,25 +252,22 @@ def studentAdd():
     degree = request.json['degree']
     ip = request.json['ip']
 
-    # Check if the current user has level == 3
-    user_check = mysql.session.execute(text("SELECT id FROM current_session WHERE ip=:ip AND active=TRUE AND level=3"), {'ip': ip})
+    sql_query = "CALL student_add(:name, :password, :year, :roll, :dept, :email, :degree, :ip)"
+    params = {
+        'name': name,
+        'password': password,
+        'year': year,
+        'roll': roll,
+        'dept': dept,
+        'email': email,
+        'degree': degree,
+        'ip': ip
+    }
 
-    if user_check.rowcount == 1:
-        # The user has level == 3, proceed with the proff insert
-        result = mysql.session.execute(text(
-            '''SELECT s_name FROM student'''
-        ))
-        if result.rowcount > 0:
-            return jsonify({'status': 'Already exists!'})
-        result = mysql.session.execute(text("INSERT INTO student(s_name, s_email, s_roll, s_password, s_degree, s_year, s_dept) VALUES(:name, :email, :roll, :password, :degree, :year, :dept)"), {'name': name,'email': email , 'roll': roll, 'password': password, 'degree': degree, 'year': year, 'dept': dept})
-        
-        if result.rowcount == 1:
-            mysql.session.commit()
-            return jsonify({'status': 'success'})
-        else:
-            return jsonify({'status': 'failed'})
-    else:
-        return jsonify({'status': 'permission denied'})
+    result = mysql.session.execute(text(sql_query), params)
+    mysql.session.commit()
+    status = result.fetchone()[0]
+    return jsonify({'status': status})
     
 if __name__ == '__main__':
     app.run(debug=True)

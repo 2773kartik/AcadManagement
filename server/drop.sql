@@ -16,6 +16,11 @@ DROP TRIGGER IF EXISTS after_student_insert;
 
 
 -- Procedures to be dropped
+DROP PROCEDURE IF EXISTS session_add;
 DROP PROCEDURE IF EXISTS after_current_update;
 DROP PROCEDURE IF EXISTS student_add_course;
 DROP PROCEDURE IF EXISTS add_course;
+DROP PROCEDURE IF EXISTS student_add;
+DROP PROCEDURE IF EXISTS student_login;
+DROP PROCEDURE IF EXISTS proff_add;
+DROP PROCEDURE IF EXISTS proff_login;
