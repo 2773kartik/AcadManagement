@@ -321,6 +321,27 @@ def studentLogin():
     status = result.fetchone()[0]
     return jsonify({'status': status})
 
+@app.route('/api/ViewMe', methods=['POST'])
+def viewMe():
+    ip = request.json['ip']
+    sql_query = '''
+
+        SELECT s_name, s_year, s_roll, s_dept, s_email, s_degree
+        FROM student
+        INNER JOIN current_session ON student.s_id = current_session.id
+        WHERE ip=:ip AND level=1
+'''
+    params = {'ip': ip}
+
+    result = mysql.session.execute(text(sql_query), params)
+
+    if result.returns_rows:
+        results = result.fetchall()
+        results = [tuple(row) for row in results]
+        return jsonify(results)
+    else:
+        return jsonify([])
+
 @app.route('/api/AddStudent', methods=['POST'])
 def studentAdd():
     name = request.json['name']
