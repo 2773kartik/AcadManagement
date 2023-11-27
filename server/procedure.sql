@@ -154,62 +154,68 @@ BEGIN
 END;
 /
 CREATE PROCEDURE IF NOT EXISTS student_add_course(
-                IN input_ip VARCHAR(255),
-                IN input_course_id INT,
-                IN input_year VARCHAR(255),
-                IN input_degree VARCHAR(255),
-                IN input_dept VARCHAR(255)
-            )
-            BEGIN
-                DECLARE user_id INT;
-                DECLARE user_level INT;
-                DECLARE prof_id INT;
-                DECLARE session_id INT;
-                DECLARE old_course INT;
-                DECLARE old_session INT;
+        IN input_ip VARCHAR(255),
+        IN input_course_id INT,
+        IN input_year VARCHAR(255),
+        IN input_degree VARCHAR(255),
+        IN input_dept VARCHAR(255)
+    )
+    BEGIN
+        DECLARE user_id INT;
+        DECLARE user_level INT;
+        DECLARE prof_id INT;
+        DECLARE session_id INT;
+        DECLARE old_year INT;
+        DECLARE old_degree VARCHAR(255);
+        DECLARE old_dept INT;
 
-                -- Get user details
-                SELECT id, level INTO user_id, user_level
-                FROM current_session
-                WHERE ip = input_ip AND active = TRUE;
+        -- Get user details
+        SELECT id, level INTO user_id, user_level
+        FROM current_session
+        WHERE ip = input_ip AND active = TRUE;
 
-                -- Check if the user has level 2
-                IF user_id IS NOT NULL AND user_level = 2 THEN
-                    -- Check if the course_id has user_id as p_id
-                    SELECT p_id INTO prof_id
-                    FROM course
-                    WHERE c_id = input_course_id;
+        -- Check if the user has level 2
+        IF user_id IS NOT NULL AND user_level = 2 THEN
+            -- Check if the course_id has user_id as p_id
+            SELECT p_id INTO prof_id
+            FROM course
+            WHERE c_id = input_course_id;
 
-                    -- Check if prof_id is not null and matches user_id
-                    IF prof_id IS NOT NULL AND prof_id = user_id THEN
-                        -- Get the active session ID
-                        SELECT s_id INTO session_id
-                        FROM session
-                        WHERE active = TRUE;
+            -- Check if prof_id is not null and matches user_id
+            IF prof_id IS NOT NULL AND prof_id = user_id THEN
+                -- Get the active session ID
+                SELECT s_id INTO session_id
+                FROM session
+                WHERE active = TRUE;
 
-                        SELECT course_id, course_session INTO old_course, old_session
-                        FROM stu_course
-                        WHERE course_id = input_course_id AND course_session = session_id
-                        LIMIT 1;
+                -- Check if a student with the same year, degree, and department has already been added
+                SELECT s_year, s_degree, s_dept INTO old_year, old_degree, old_dept
+                FROM stu_course, student
+                WHERE stu_course.stu_id = student.s_id
+                    AND stu_course.course_session = session_id
+                    AND student.s_year = input_year
+                    AND student.s_degree = input_degree
+                    AND student.s_dept = input_dept;
 
-                        IF old_course IS NOT NULL AND old_session IS NOT NULL THEN
-                            SELECT 'already added' AS status;                        
-                        ELSE
-                            -- Insert into stu_course
-                            INSERT INTO stu_course(course_id, course_session, stu_id, status, grade)
-                            SELECT input_course_id, session_id, s_id, 3, 0
-                            FROM student
-                            WHERE s_year = input_year AND s_degree = input_degree AND s_dept = input_dept;
-
-                            SELECT 'success' AS status;
-                        END IF;
-                    ELSE
-                        SELECT 'permission denied' AS status;
-                    END IF;
+                IF old_year IS NOT NULL AND old_degree IS NOT NULL AND old_dept IS NOT NULL THEN
+                    SELECT 'already added' AS status;
                 ELSE
-                    SELECT 'permission denied' AS status;
+                    -- Insert into stu_course
+                    INSERT INTO stu_course(course_id, course_session, stu_id, status, grade)
+                    SELECT input_course_id, session_id, s_id, 3, 0
+                    FROM student
+                    WHERE s_year = input_year AND s_degree = input_degree AND s_dept = input_dept;
+
+                    SELECT 'success' AS status;
                 END IF;
-            END;
+            ELSE
+                SELECT 'permission denied' AS status;
+            END IF;
+        ELSE
+            SELECT 'permission denied' AS status;
+        END IF;
+    END;
+
 /
 
 CREATE PROCEDURE IF NOT EXISTS add_course(
@@ -248,6 +254,57 @@ CREATE PROCEDURE IF NOT EXISTS add_course(
                         ELSE
                             SELECT 'failed' AS status;
                         END IF;
+                    END IF;
+                ELSE
+                    SELECT 'permission denied' AS status;
+                END IF;
+            END;
+
+/
+CREATE PROCEDURE IF NOT EXISTS add_grade(
+                IN input_ip VARCHAR(255),
+                IN stud_id INT,
+                IN input_course_id INT,
+                IN input_grade INT
+            )
+            BEGIN
+                DECLARE user_id INT;
+                DECLARE active_session INT;
+                DECLARE old_course INT;
+                DECLARE old_session INT;
+
+                -- Get user details
+                SELECT id, (SELECT s_id FROM session WHERE active = TRUE) INTO user_id, active_session
+                FROM current_session
+                WHERE ip = input_ip AND active = TRUE AND level = 2;
+
+                -- Check if the user has level 2 and an active session is set
+                IF user_id IS NOT NULL AND active_session IS NOT NULL THEN
+                    -- Check if the course_id has user_id as p_id
+                    SELECT c_id INTO old_course
+                    FROM course
+                    WHERE c_id = input_course_id;
+
+                    -- Check if old_course is not null and matches user_id
+                    IF old_course IS NOT NULL THEN
+                        -- Get the active session ID
+                        SELECT s_id INTO old_session
+                        FROM session
+                        WHERE active = TRUE;
+
+                        -- Check if the course is active in the current session
+                        IF old_session IS NOT NULL AND old_session = active_session THEN
+                            -- Update the grade
+                            UPDATE stu_course
+                            SET grade = input_grade
+                            WHERE course_id = input_course_id AND course_session = active_session AND stu_id = stud_id;
+
+                            SELECT 'success' AS status;
+                        ELSE
+                            SELECT 'permission denied' AS status;
+                        END IF;
+                    ELSE
+                        SELECT 'permission denied' AS status;
                     END IF;
                 ELSE
                     SELECT 'permission denied' AS status;

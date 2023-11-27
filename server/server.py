@@ -50,6 +50,10 @@ def add_procedures():
             for query in queries:
                 mysql.session.execute(text(query))
             mysql.session.commit()
+        with open('cgpa.sql', 'r') as f:
+            query = f.read()
+            mysql.session.execute(text(query))
+            mysql.session.commit()
     except Exception as e:
         print(e)
 
@@ -223,6 +227,54 @@ def getCourses():
         return jsonify(results)
     else:
         return jsonify([])
+
+@app.route('/api/GetStudents', methods=['GET'])
+def getStudents():
+    result = mysql.session.execute(text(
+        '''
+            SELECT s_id, s_name, s_year, s_roll, s_dept, s_email, s_degree, d_name
+            FROM student
+            INNER JOIN dept ON student.s_dept = dept.d_id
+        '''
+    ))
+    mysql.session.commit()
+    if result.rowcount > 0:
+        results = result.fetchall()
+        results = [tuple(row) for row in results]
+        return jsonify(results)
+    else:
+        return jsonify([])
+
+@app.route('/api/GetProffs', methods=['GET'])
+def getProffs():
+    ip = request.json['ip']
+    sql_query = "CALL get_proffs(:ip)"
+    params = {'ip': ip}
+
+    result = mysql.session.execute(text(sql_query), params)
+
+    if result.returns_rows:
+        results = result.fetchall()
+        results = [tuple(row) for row in results]
+        return jsonify(results)
+    else:
+        return jsonify([])
+
+@app.route('/api/AddGrade', methods=['POST'])
+def addGrade():
+    ip = request.json['ip']
+    s_id = request.json['s_id']
+    c_id = request.json['c_id']
+    grade = request.json['grade']
+
+    result = mysql.session.execute(
+        text("CALL add_grade(:ip, :s_id, :c_id, :grade)"),
+        {'ip': ip, 's_id': s_id, 'c_id': c_id, 'grade': grade}
+    )
+    mysql.session.commit()
+    status = result.fetchone()[0]
+
+    return jsonify({'status': status})
     
 @app.route('/api/LoginStudent', methods=['POST'])
 def studentLogin():

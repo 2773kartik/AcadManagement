@@ -1,5 +1,5 @@
 -- Tables to be dropped
-
+DROP TABLE IF EXISTS stu_sg;
 DROP TABLE IF EXISTS stu_course;
 DROP TABLE IF EXISTS student;
 DROP TABLE IF EXISTS course;
@@ -13,6 +13,7 @@ DROP TABLE IF EXISTS current_session;
 DROP TRIGGER IF EXISTS after_admin_insert;
 DROP TRIGGER IF EXISTS after_proff_insert;
 DROP TRIGGER IF EXISTS after_student_insert;
+DROP TRIGGER IF EXISTS before_session_change;
 
 
 -- Procedures to be dropped
@@ -24,3 +25,5 @@ DROP PROCEDURE IF EXISTS student_add;
 DROP PROCEDURE IF EXISTS student_login;
 DROP PROCEDURE IF EXISTS proff_add;
 DROP PROCEDURE IF EXISTS proff_login;
+DROP PROCEDURE IF EXISTS get_proffs;
+DROP PROCEDURE IF EXISTS calculate_sgpa_and_update_student;

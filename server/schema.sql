@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS proff(
 CREATE TABLE IF NOT EXISTS course(
                 c_id INTEGER PRIMARY KEY AUTO_INCREMENT,
                 c_name VARCHAR(255) NOT NULL,
-                c_cred INTEGER NOT NULL,
+                c_cred FLOAT NOT NULL,
                 c_session INTEGER NOT NULL,
                 p_id INTEGER NOT NULL,
                 FOREIGN KEY (p_id) REFERENCES proff(p_id),
@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS student(
                 s_degree VARCHAR(255) NOT NULL,
                 s_year INTEGER NOT NULL,
                 s_dept INTEGER NOT NULL,
+                credits FLOAT DEFAULT 0,
+                cgpa FLOAT DEFAULT 0,
                 FOREIGN KEY (s_dept) REFERENCES dept(d_id)
             );
 
@@ -65,4 +67,13 @@ CREATE TABLE IF NOT EXISTS current_session(
                 ip VARCHAR(255),
                 active BOOLEAN NOT NULL DEFAULT FALSE,
                 PRIMARY KEY (id, level)
+            );
+
+CREATE TABLE IF NOT EXISTS stu_sg(
+                s_id INTEGER NOT NULL,
+                ses_id INTEGER NOT NULL,
+                sg FLOAT NOT NULL,
+                creds INTEGER NOT NULL,
+                FOREIGN KEY (s_id) REFERENCES student(s_id),
+                FOREIGN KEY (ses_id) REFERENCES session(s_id)
             );
